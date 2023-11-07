@@ -1,5 +1,3 @@
-# chatgpt4fam
-
 ![logo](logo.png)
 
 Family client for calling ChatGPT API. 
