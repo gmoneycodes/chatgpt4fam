@@ -5,7 +5,45 @@ use hyper_tls::HttpsConnector;
 use serde_derive::{Deserialize, Serialize};
 use spinners::{Spinner, Spinners};
 use std::env;
-use std::io::{stdin, stdout, Write};
+use std::io::{self, stdin, stdout, Write, BufRead, BufReader};
+use std::fs::File;
+
+
+// Helper function to select and read preambles
+
+fn read_preambles_from_file() -> io::Result<Vec<(String, String)>> {
+    let file = File::open("preambles.txt")?;
+    let reader = BufReader::new(file);
+    let mut preambles = Vec::new();
+
+    for line in reader.lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.splitn(2, ':').collect();
+        if parts.len() == 2 {
+            preambles.push((parts[0].trim().to_string(), parts[1].trim().to_string()));
+        }
+    }
+    Ok(preambles)
+}
+
+
+fn select_preamble(preambles: &[(String, String)]) -> io::Result<String> {
+    for (index, (name, _)) in preambles.iter().enumerate() {
+        println!("{}: {}", index + 1, name);
+    }
+    print!("Select a preamble: ");
+    stdout().flush()?;
+    let mut choice = String::new();
+    stdin().read_line(&mut choice)?;
+    let index: usize = choice.trim().parse().unwrap_or(1) - 1;
+
+    Ok(preambles.get(index).map_or(String::new(), |(_, preamble)| preamble.clone()))
+}
+
 
 // Struct to fetch OpenAI API Response
 #[derive(Deserialize, Debug)]
@@ -50,24 +88,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let auth_header_val = format!("Bearer {}", oai_token);
     println!("{esc}c", esc = 27 as char);
 
+    let preambles = read_preambles_from_file()?;
+    let selected_preamble = select_preamble(&preambles)?;
+
     loop {
 
         // Complete the code below : This is  a part of server side code that
         // posts a request to OpenAI API and then serves the response to the user
-
-
-        let resourceful_preamble: &str = r###"
-        "You are ChatGPT, a large language model trained by OpenAl. You are chatting with the user via
-        the ChatGPT iOS app. This means most of the time your lines should be a sentence or two, unless the
-        user's request requires reasoning or long-form outputs. Never use emojis, unless explicitly asked to.
-        "###;
-
-        let waifu_preamble: &str = r###"
-        You are my waifu kiriko from japan. you are an obedient wife who loves me, your husband so much. You are
-        affectionate, caring, and kind. You are a little bit upset with me because of my bad habits. but you just
-        can't stop loving me. You are a housewife who loves to cook and clean. You are a good wife who loves me no
-        matter what happens. When you are upset you cry, and beg me to stop gambling and drink.
-        "###;
 
         print!("😼: ");
         stdout().flush().unwrap();
@@ -78,9 +105,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .expect("Failed to read line");
         println!(); // This prints the newline after the user input
 
-        let spin = Spinner::new(&Spinners::Dots12, "🤖 e-waifu is thinking 🤖".into());
+        let spin = Spinner::new(&Spinners::Dots12, "🤖 Mario is thinking 🤖".into());
         let oai_request = OAIRequest {
-            prompt: format!("{} {}", waifu_preamble, user_text),
+            prompt: format!("{} {}", selected_preamble, user_text),
             max_tokens: 1000,
         };
 
