@@ -7,10 +7,10 @@ use spinners::{Spinner, Spinners};
 use std::env;
 use std::io::{self, stdin, stdout, Write, BufRead, BufReader};
 use std::fs::File;
+use serde::forward_to_deserialize_any;
 
 
 // Helper function to select and read preambles
-
 fn read_preambles_from_file() -> io::Result<Vec<(String, String)>> {
     let file = File::open("preambles.txt")?;
     let reader = BufReader::new(file);
@@ -47,17 +47,32 @@ fn select_preamble(preambles: &[(String, String)]) -> io::Result<String> {
 
 // Struct to fetch OpenAI API Response
 #[derive(Deserialize, Debug)]
-struct OAIResponse {
+struct ChatResponse {
     id: Option<String>,
     object: Option<String>,
     created: Option<u64>,
     model: Option<String>,
-    choices: Vec<OAIChoices>,
+    choices: Vec<Choice>,
+    usage: Option<Usage>
+}
+
+
+#[derive(Deserialize, Debug)]
+struct Message {
+    role: String,
+    content: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct Usage {
+    text_characters: Option<u16>,
+    completion_tokens: Option<u16>,
+    total_tokens: Option<u16>,
 }
 
 // Struct to capture options/choices
 #[derive(Deserialize, Debug)]
-struct OAIChoices {
+struct Choice {
     text: String,
     index: u8,
     logprobs: Option<u8>,
@@ -66,7 +81,7 @@ struct OAIChoices {
 
 // Request Struct
 #[derive(Serialize, Debug)]
-struct OAIRequest {
+struct ChatRequest {
     prompt: String,
     max_tokens: u16,
 }
@@ -80,10 +95,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let https = HttpsConnector::new();
     let client = Client::builder().build(https);
 
-    //TODO: Davinci 003 will be deprecated on April 2024
+    // New OpenAI API endpoint
+    let uri: &str =  "https://api.openai.com/v1/chat/completion";
 
-
-    let uri: &str = "https://api.openai.com/v1/engines/text-davinci-003/completions";
     let oai_token: String = env::var("OAI_TOKEN").unwrap();
     let auth_header_val = format!("Bearer {}", oai_token);
     println!("{esc}c", esc = 27 as char);
@@ -106,22 +120,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!(); // This prints the newline after the user input
 
         let spin = Spinner::new(&Spinners::Dots12, "🤖 Mario is thinking 🤖".into());
-        let oai_request = OAIRequest {
+        let oai_request = ChatRequest {
             prompt: format!("{} {}", selected_preamble, user_text),
             max_tokens: 1000,
         };
 
         let body = Body::from(serde_json::to_vec(&oai_request)?);
-        let req = Request::post(uri)
+        let req = Request::post(uri_gpt4)
             .header(header::AUTHORIZATION, &auth_header_val)
             .header(header::CONTENT_TYPE, "application/json")
             .body(body)
             .unwrap();
+
         let response = client.request(req).await?;
         let body = hyper::body::aggregate(response).await?;
-        let json: OAIResponse = serde_json::from_reader(body.reader())?;
+        let json: ChatResponse = serde_json::from_reader(body.reader())?;
 
-        spin.stop(); // Stop the spinner
+        spin.stop();
         println!(); // This ensures we start on a new line after the spinner
 
 // We use `trim` to remove any leading or trailing whitespace characters, including newlines
